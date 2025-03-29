@@ -11,7 +11,10 @@ import (
 
 func init() {
 	s := NewServer()
+
+	log.Println("Running server")
 	err := s.Run()
+
 	if err != nil {
 		log.Fatal("Error starting server:", err)
 		return
@@ -26,6 +29,8 @@ func TestNewServer(t *testing.T) {
 		t.Error("Error connecting to server:", err)
 		return
 	}
+
+	t.Log("Connected to", conn.RemoteAddr())
 	defer func(conn net.Conn) {
 		err := conn.Close()
 		if err != nil {

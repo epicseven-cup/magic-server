@@ -1,7 +1,6 @@
 package pkg
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/binary"
 	"errors"
@@ -64,13 +63,7 @@ func (s *Server) Run() error {
 	if err != nil {
 		return err
 	}
-	//defer func(listener net.Listener) {
-	//	log.Println("Closing listener")
-	//	err = listener.Close()
-	//	if err != nil {
-	//		log.Println("Error closing listener:", err)
-	//	}
-	//}(listener)
+
 	log.Println("Listening on", listener.Addr())
 
 	go func() {
@@ -80,15 +73,19 @@ func (s *Server) Run() error {
 				log.Println("Error accepting connection:", err)
 			}
 			log.Println("New connection from", conn.RemoteAddr())
-			reader := bufio.NewReader(conn)
+			buffer := make([]byte, 1024)
 			data := make([]byte, MessageMaxSize)
 
-			log.Println("buffer size: ", reader.Buffered())
+			log.Println("buffer size: ", len(buffer))
 
 			for {
-				n, err := buffer.Read(data)
-				log.Println("read: ", n)
-				log.Println("read:", string(data))
+				n, err := conn.Read(buffer)
+				log.Println("amount read: ", n)
+
+				data = append(data, buffer[:n]...)
+				buffer = buffer[n:]
+				log.Println(string(data))
+
 				if err != nil && err != io.EOF {
 					log.Println(err)
 					break
@@ -102,6 +99,7 @@ func (s *Server) Run() error {
 					log.Println("message too large")
 					break
 				}
+
 			}
 
 			msg := &Message{}
