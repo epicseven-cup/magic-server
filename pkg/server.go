@@ -2,30 +2,27 @@ package pkg
 
 import (
 	"bytes"
-	"encoding/binary"
+	"encoding/gob"
 	"errors"
 	"github.com/google/uuid"
-	"io"
 	"log"
 	"net"
-	"os"
-	"strconv"
 )
 
-var MessageMaxSize, _ = strconv.Atoi(os.Getenv("MESSAGE_MAX_SIZE"))
+var MessageMaxSize = 2048
 
 type Server struct {
-	chatrooms map[string]*ChatRoom
+	chatrooms map[uuid.UUID]*ChatRoom
 }
 
 func NewServer() *Server {
 	s := &Server{
-		chatrooms: make(map[string]*ChatRoom),
+		chatrooms: make(map[uuid.UUID]*ChatRoom),
 	}
 	return s
 }
 
-func (s *Server) JoinChatroom(roomId string, clientAddress string) error {
+func (s *Server) JoinChatroom(roomId uuid.UUID, clientAddress string) error {
 	chatroom, ok := s.chatrooms[roomId]
 	if !ok {
 		return errors.New("room not found")
@@ -38,17 +35,17 @@ func (s *Server) JoinChatroom(roomId string, clientAddress string) error {
 	return nil
 }
 
-func (s *Server) CreateRoom() (string, error) {
-	roomId := uuid.New().String()
+func (s *Server) CreateRoom() (uuid.UUID, error) {
+	roomId := uuid.New()
 	_, ok := s.chatrooms[roomId]
 	if ok {
-		return "", errors.New("room already exists")
+		return [16]byte{}, errors.New("room already exists")
 	}
 	s.chatrooms[roomId] = NewChatRoom()
 	return roomId, nil
 }
 
-func (s *Server) GetRoom(roomId string) (*ChatRoom, error) {
+func (s *Server) GetRoom(roomId uuid.UUID) (*ChatRoom, error) {
 	room, ok := s.chatrooms[roomId]
 	if !ok {
 		return nil, errors.New("room not found")
@@ -71,27 +68,25 @@ func (s *Server) Run() error {
 			conn, err := listener.Accept()
 			if err != nil {
 				log.Println("Error accepting connection:", err)
+				continue
 			}
 			log.Println("New connection from", conn.RemoteAddr())
-			buffer := make([]byte, 1024)
-			data := make([]byte, MessageMaxSize)
-
-			log.Println("buffer size: ", len(buffer))
+			var data []byte
+			buffer := make([]byte, 16)
 
 			for {
 				n, err := conn.Read(buffer)
-				log.Println("amount read: ", n)
-
+				//log.Println("Read", n, err)
 				data = append(data, buffer[:n]...)
-				buffer = buffer[n:]
-				log.Println(string(data))
+				buffer = buffer[:n]
+				//log.Println(string(data))
 
-				if err != nil && err != io.EOF {
-					log.Println(err)
-					break
-				}
-				if err == io.EOF {
-					log.Println("EOF")
+				if err != nil {
+					if err.Error() == "EOF" {
+						log.Println("EOF")
+						break
+					}
+					log.Println("Error reading:", err)
 					break
 				}
 
@@ -101,21 +96,31 @@ func (s *Server) Run() error {
 				}
 
 			}
+			var msg Message
+			log.Println("reader to: ", string(data))
+			log.Println("data size: ", len(data))
 
-			msg := &Message{}
+			var byteBuffer bytes.Buffer
 
-			err = binary.Read(bytes.NewBuffer(data), binary.LittleEndian, msg)
+			dec := gob.NewDecoder(&byteBuffer)
+			err = dec.Decode(&msg)
+
+			//err = binary.Read(reader, binary.BigEndian, &msg)
+			//if err != nil {
+			//	log.Println("decode: ", err)
+			//	continue
+			//}
+
+			log.Println("Message Size:", msg.Size)
+			log.Println("Message RoomId:", msg.RoomId)
+			log.Println("Message Content:", msg.Content)
+
+			_, err = s.GetRoom(msg.RoomId)
 			if err != nil {
 				log.Println(err)
 			}
-
-			log.Println("Message received: ", msg)
-
-			room, err := s.GetRoom(msg.RoomId)
-			if err != nil {
-				log.Println(err)
-			}
-			room.Broadcast(msg.Content)
+			//msg.Content
+			//room.Broadcast()
 
 		}
 	}()

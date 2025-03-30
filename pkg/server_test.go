@@ -7,41 +7,46 @@ import (
 	"log"
 	"net"
 	"testing"
+	"time"
 )
 
 func init() {
 	s := NewServer()
 
 	log.Println("Running server")
-	err := s.Run()
-
-	if err != nil {
-		log.Fatal("Error starting server:", err)
-		return
-	}
+	go func() {
+		err := s.Run()
+		if err != nil {
+			panic(err)
+		}
+	}()
+	time.Sleep(5 * time.Second)
 
 }
 
 func TestNewServer(t *testing.T) {
 
 	conn, err := net.Dial("tcp", ":8000")
+	//deadline := 40 * time.Second
+	//err = conn.SetDeadline(time.Now().Add(deadline))
+	if err != nil {
+		log.Fatal("Error setting write deadline:", err)
+		return
+	}
 	if err != nil {
 		t.Error("Error connecting to server:", err)
 		return
 	}
 
 	t.Log("Connected to", conn.RemoteAddr())
-	defer func(conn net.Conn) {
-		err := conn.Close()
-		if err != nil {
-			t.Error("Error closing connection:", err)
-		}
-	}(conn)
+	content := [2048]byte{}
+	copy(content[:2048], "Hello World")
+	id := uuid.New()
 
 	msg := Message{
 		Size:    1,
-		RoomId:  uuid.New().String(),
-		Content: "Hello World!",
+		RoomId:  id,
+		Content: content,
 	}
 	data := new(bytes.Buffer)
 
@@ -59,9 +64,23 @@ func TestNewServer(t *testing.T) {
 	}
 
 	_, err = conn.Write(data.Bytes())
+	log.Println("Written", len(data.Bytes()), err)
+
+	log.Println("Write to", data.String())
 	if err != nil {
-		t.Error(err)
+
+		t.Error("Error writing to server:", err)
 		return
 	}
+	defer func(conn net.Conn) {
+		err := conn.Close()
+		if err != nil {
+			t.Error("Error closing connection:", err)
+		}
+	}(conn)
+
+	t.Log("Message Size:", msg.Size)
+	t.Log("Message RoomId:", msg.RoomId)
+	t.Log("Message Content:", msg.Content)
 
 }
